@@ -8,29 +8,29 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-06-04",
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "triggers": {
-    "crons": ["*/10 * * * *", "0 15 * * *"]
+    "crons": ["*/10 * * * *", "0 15 * * *"],
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "bsky-feedreader-cloudflare",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "preview_database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
+      "database_id": "a723398a-9892-4d49-90e5-e253d22208ef",
+      "preview_database_id": "a723398a-9892-4d49-90e5-e253d22208ef",
+      "migrations_dir": "migrations",
+    },
   ],
   "kv_namespaces": [
     {
       "binding": "SESSION_KV",
-      "id": "00000000000000000000000000000000",
-      "preview_id": "00000000000000000000000000000000"
-    }
+      "id": "74b8099bb096456fbab12733ac689aca",
+      "preview_id": "74b8099bb096456fbab12733ac689aca",
+    },
   ],
   "vars": {
     "FEED_CONFIG_URL": "https://example.com/feeds.json",
-    "MAX_POSTS_PER_RUN": "10"
-  }
+    "MAX_POSTS_PER_RUN": "10",
+  },
 }

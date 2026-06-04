@@ -1,4 +1,3 @@
-import type { D1Database } from '@cloudflare/workers-types';
 import type { FeedConfig, FeedEntry } from './types';
 
 const STALE_CLAIM_WINDOW_HOURS = 6;
@@ -36,7 +35,11 @@ export async function markFeedCheckSuccess(db: D1Database, feed: FeedConfig): Pr
     .run();
 }
 
-export async function markFeedCheckFailure(db: D1Database, feed: FeedConfig, errorMessage: string): Promise<void> {
+export async function markFeedCheckFailure(
+  db: D1Database,
+  feed: FeedConfig,
+  errorMessage: string,
+): Promise<void> {
   await db
     .prepare(
       `UPDATE feeds
