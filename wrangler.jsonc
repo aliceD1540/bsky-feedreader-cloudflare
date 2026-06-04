@@ -1,0 +1,38 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bsky-feedreader-cloudflare",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-04",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bsky-feedreader-cloudflare",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "preview_database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_KV",
+      "id": "00000000000000000000000000000000",
+      "preview_id": "00000000000000000000000000000000"
+    }
+  ],
+  "vars": {
+    "FEED_CONFIG_URL": "https://example.com/feeds.json",
+    "BSKY_USERNAME": "example.bsky.social",
+    "BSKY_APP_PASSWORD": "replace-me",
+    "MAX_POSTS_PER_RUN": "10"
+  }
+}
