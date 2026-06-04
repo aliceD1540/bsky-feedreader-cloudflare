@@ -31,8 +31,6 @@
   ],
   "vars": {
     "FEED_CONFIG_URL": "https://example.com/feeds.json",
-    "BSKY_USERNAME": "example.bsky.social",
-    "BSKY_APP_PASSWORD": "replace-me",
     "MAX_POSTS_PER_RUN": "10"
   }
 }

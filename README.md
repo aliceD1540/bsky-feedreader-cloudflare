@@ -39,6 +39,7 @@ Cloudflare Workers 上で RSS/Atom フィードを巡回し、新着エントリ
    npx wrangler secret put BSKY_USERNAME
    npx wrangler secret put BSKY_APP_PASSWORD
    ```
+   `wrangler.jsonc` には認証情報を直接書かず、必ず secret として設定してください。
 5. 型定義を再生成します。
    ```bash
    npm run cf-typegen
