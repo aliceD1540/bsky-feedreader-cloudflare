@@ -10,6 +10,7 @@ Cloudflare Workers 上で RSS/Atom フィードを巡回し、新着エントリ
 4. D1 で未投稿エントリーだけを claim
 5. Bluesky に投稿
 6. 投稿済みエントリーを D1 に記録
+7. 毎日 0:00 JST に 30 日より古い投稿履歴を削除
 
 ## 必要な Cloudflare リソース
 
@@ -71,3 +72,8 @@ npm run test
 ```
 
 `npm run dev` 実行中は `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"` で scheduled handler を確認できます。
+
+## Cron Trigger
+
+- `*/10 * * * *`: フィード巡回
+- `0 15 * * *`: 投稿履歴の削除（UTC 基準。JST では毎日 0:00）

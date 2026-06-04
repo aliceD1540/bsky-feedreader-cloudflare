@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { FeedConfig, FeedEntry } from './types';
 
 const STALE_CLAIM_WINDOW_HOURS = 6;
+const POST_RETENTION_DAYS = 30;
 
 export async function syncFeeds(db: D1Database, feeds: FeedConfig[]): Promise<void> {
   if (feeds.length === 0) {
@@ -101,4 +102,18 @@ export async function releaseEntryClaim(db: D1Database, entryUrl: string): Promi
     .prepare(`DELETE FROM posted_entries WHERE entry_url = ? AND state = 'pending';`)
     .bind(entryUrl)
     .run();
+}
+
+export async function purgeExpiredPostedEntries(db: D1Database): Promise<number> {
+  const result = await db
+    .prepare(
+      `DELETE FROM posted_entries
+       WHERE state = 'posted'
+         AND posted_at IS NOT NULL
+         AND posted_at < datetime('now', ?);`,
+    )
+    .bind(`-${POST_RETENTION_DAYS} days`)
+    .run();
+
+  return result.meta.changes ?? 0;
 }

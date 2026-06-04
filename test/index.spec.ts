@@ -127,9 +127,9 @@ describe('scheduled worker', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     });
 
-    const { runScheduled } = await import('../src/index');
+    const { runFeedPollJob } = await import('../src/index');
     const ctx = createExecutionContext();
-    const summary = await runScheduled(env, ctx);
+    const summary = await runFeedPollJob(env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(summary).toEqual({
@@ -192,10 +192,10 @@ describe('scheduled worker', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     });
 
-    const { runScheduled } = await import('../src/index');
+    const { runFeedPollJob } = await import('../src/index');
 
     const firstCtx = createExecutionContext();
-    const firstSummary = await runScheduled(env, firstCtx);
+    const firstSummary = await runFeedPollJob(env, firstCtx);
     await waitOnExecutionContext(firstCtx);
 
     expect(firstSummary.failedPosts).toBe(1);
@@ -206,11 +206,61 @@ describe('scheduled worker', () => {
     expect(afterFirstRunCount?.count).toBe(0);
 
     const secondCtx = createExecutionContext();
-    const secondSummary = await runScheduled(env, secondCtx);
+    const secondSummary = await runFeedPollJob(env, secondCtx);
     await waitOnExecutionContext(secondCtx);
 
     expect(secondSummary.postedEntries).toBe(1);
     expect(postMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('deletes posted entries older than 30 days during the cleanup cron', async () => {
+    await env.DB
+      .prepare(
+        `INSERT INTO feeds (feed_url, title)
+         VALUES (?, ?);`,
+      )
+      .bind('https://example.com/feed.rdf', 'Example Feed')
+      .run();
+
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          `INSERT INTO posted_entries (
+             entry_url,
+             feed_url,
+             title,
+             state,
+             claimed_at,
+             posted_at
+           )
+           VALUES (?, ?, ?, 'posted', datetime('now', '-40 days'), datetime('now', '-40 days'));`,
+        )
+        .bind('https://example.com/posts/old', 'https://example.com/feed.rdf', 'Old Entry'),
+      env.DB
+        .prepare(
+          `INSERT INTO posted_entries (
+             entry_url,
+             feed_url,
+             title,
+             state,
+             claimed_at,
+             posted_at
+           )
+           VALUES (?, ?, ?, 'posted', datetime('now', '-10 days'), datetime('now', '-10 days'));`,
+        )
+        .bind('https://example.com/posts/recent', 'https://example.com/feed.rdf', 'Recent Entry'),
+    ]);
+
+    const { runCleanupJob } = await import('../src/index');
+    const summary = await runCleanupJob(env);
+
+    expect(summary).toEqual({ deletedEntries: 1 });
+
+    const rows = await env.DB
+      .prepare('SELECT entry_url FROM posted_entries ORDER BY entry_url;')
+      .all<{ entry_url: string }>();
+
+    expect(rows.results).toEqual([{ entry_url: 'https://example.com/posts/recent' }]);
   });
 });
 

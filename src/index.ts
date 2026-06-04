@@ -3,12 +3,19 @@ import * as db from './db';
 import { fetchFeedConfig, fetchFeedEntries } from './feed';
 import type { Env, FeedConfig, FeedEntry } from './types';
 
+const FEED_POLL_CRON = '*/10 * * * *';
+const CLEANUP_CRON = '0 15 * * *';
+
 interface ScheduledSummary {
   feedsChecked: number;
   claimedEntries: number;
   postedEntries: number;
   failedFeeds: number;
   failedPosts: number;
+}
+
+interface CleanupSummary {
+  deletedEntries: number;
 }
 
 export default {
@@ -24,18 +31,24 @@ export default {
 
     return Response.json({
       ok: true,
-      message: 'Use the scheduled trigger to poll feeds.',
+      message: 'Use the scheduled trigger to poll feeds or purge expired history.',
       healthcheck: '/health',
     });
   },
 
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const summary = await runScheduled(env, ctx);
-    console.log('Scheduled run finished.', summary);
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (controller.cron === CLEANUP_CRON) {
+      const summary = await runCleanupJob(env);
+      console.log('Cleanup run finished.', summary);
+      return;
+    }
+
+    const summary = await runFeedPollJob(env, ctx);
+    console.log('Feed polling run finished.', { cron: controller.cron, ...summary });
   },
 } satisfies ExportedHandler<Env>;
 
-export async function runScheduled(env: Env, ctx: ExecutionContext): Promise<ScheduledSummary> {
+export async function runFeedPollJob(env: Env, ctx: ExecutionContext): Promise<ScheduledSummary> {
   const feeds = await fetchFeedConfig(env.FEED_CONFIG_URL);
   await db.syncFeeds(env.DB, feeds);
 
@@ -97,6 +110,11 @@ export async function runScheduled(env: Env, ctx: ExecutionContext): Promise<Sch
   return summary;
 }
 
+export async function runCleanupJob(env: Env): Promise<CleanupSummary> {
+  const deletedEntries = await db.purgeExpiredPostedEntries(env.DB);
+  return { deletedEntries };
+}
+
 async function fetchAndTrackFeed(
   env: Env,
   feed: FeedConfig,
@@ -117,3 +135,5 @@ function getMaxPostsPerRun(value: string | undefined): number {
   const parsed = Number.parseInt(value ?? '10', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
 }
+
+export { CLEANUP_CRON, FEED_POLL_CRON };
