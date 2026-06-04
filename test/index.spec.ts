@@ -1,5 +1,8 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Env } from '../src/types';
+
+const workerEnv = env as typeof env & Env;
 
 const postedPayloads: Array<Record<string, unknown>> = [];
 const loginMock = vi.fn();
@@ -20,10 +23,14 @@ const uploadBlobMock = vi.fn(async () => ({
 
 vi.mock('@atproto/api', () => {
   class MockAtpAgent {
-    private readonly options: { persistSession?: (event: string, session?: Record<string, unknown>) => void };
+    private readonly options: {
+      persistSession?: (event: string, session?: Record<string, unknown>) => void;
+    };
     session: Record<string, unknown> | null = null;
 
-    constructor(options: { persistSession?: (event: string, session?: Record<string, unknown>) => void }) {
+    constructor(options: {
+      persistSession?: (event: string, session?: Record<string, unknown>) => void;
+    }) {
       this.options = options;
     }
 
@@ -95,7 +102,8 @@ describe('scheduled worker', () => {
 
   it('posts newly discovered entries and records them in D1', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
 
       if (url === env.FEED_CONFIG_URL) {
         return jsonResponse({
@@ -129,7 +137,7 @@ describe('scheduled worker', () => {
 
     const { runFeedPollJob } = await import('../src/index');
     const ctx = createExecutionContext();
-    const summary = await runFeedPollJob(env, ctx);
+    const summary = await runFeedPollJob(workerEnv, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(summary).toEqual({
@@ -170,7 +178,8 @@ describe('scheduled worker', () => {
     });
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
 
       if (url === env.FEED_CONFIG_URL) {
         return jsonResponse({
@@ -195,18 +204,20 @@ describe('scheduled worker', () => {
     const { runFeedPollJob } = await import('../src/index');
 
     const firstCtx = createExecutionContext();
-    const firstSummary = await runFeedPollJob(env, firstCtx);
+    const firstSummary = await runFeedPollJob(workerEnv, firstCtx);
     await waitOnExecutionContext(firstCtx);
 
     expect(firstSummary.failedPosts).toBe(1);
 
-    const afterFirstRunCount = await env.DB.prepare('SELECT COUNT(*) AS count FROM posted_entries;').first<{
+    const afterFirstRunCount = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM posted_entries;',
+    ).first<{
       count: number;
     }>();
     expect(afterFirstRunCount?.count).toBe(0);
 
     const secondCtx = createExecutionContext();
-    const secondSummary = await runFeedPollJob(env, secondCtx);
+    const secondSummary = await runFeedPollJob(workerEnv, secondCtx);
     await waitOnExecutionContext(secondCtx);
 
     expect(secondSummary.postedEntries).toBe(1);
@@ -214,18 +225,16 @@ describe('scheduled worker', () => {
   });
 
   it('deletes posted entries older than 30 days during the cleanup cron', async () => {
-    await env.DB
-      .prepare(
-        `INSERT INTO feeds (feed_url, title)
+    await env.DB.prepare(
+      `INSERT INTO feeds (feed_url, title)
          VALUES (?, ?);`,
-      )
+    )
       .bind('https://example.com/feed.rdf', 'Example Feed')
       .run();
 
     await env.DB.batch([
-      env.DB
-        .prepare(
-          `INSERT INTO posted_entries (
+      env.DB.prepare(
+        `INSERT INTO posted_entries (
              entry_url,
              feed_url,
              title,
@@ -234,11 +243,9 @@ describe('scheduled worker', () => {
              posted_at
            )
            VALUES (?, ?, ?, 'posted', datetime('now', '-40 days'), datetime('now', '-40 days'));`,
-        )
-        .bind('https://example.com/posts/old', 'https://example.com/feed.rdf', 'Old Entry'),
-      env.DB
-        .prepare(
-          `INSERT INTO posted_entries (
+      ).bind('https://example.com/posts/old', 'https://example.com/feed.rdf', 'Old Entry'),
+      env.DB.prepare(
+        `INSERT INTO posted_entries (
              entry_url,
              feed_url,
              title,
@@ -247,18 +254,17 @@ describe('scheduled worker', () => {
              posted_at
            )
            VALUES (?, ?, ?, 'posted', datetime('now', '-10 days'), datetime('now', '-10 days'));`,
-        )
-        .bind('https://example.com/posts/recent', 'https://example.com/feed.rdf', 'Recent Entry'),
+      ).bind('https://example.com/posts/recent', 'https://example.com/feed.rdf', 'Recent Entry'),
     ]);
 
     const { runCleanupJob } = await import('../src/index');
-    const summary = await runCleanupJob(env);
+    const summary = await runCleanupJob(workerEnv);
 
     expect(summary).toEqual({ deletedEntries: 1 });
 
-    const rows = await env.DB
-      .prepare('SELECT entry_url FROM posted_entries ORDER BY entry_url;')
-      .all<{ entry_url: string }>();
+    const rows = await env.DB.prepare(
+      'SELECT entry_url FROM posted_entries ORDER BY entry_url;',
+    ).all<{ entry_url: string }>();
 
     expect(rows.results).toEqual([{ entry_url: 'https://example.com/posts/recent' }]);
   });

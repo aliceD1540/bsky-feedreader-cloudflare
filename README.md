@@ -20,6 +20,8 @@ Cloudflare Workers 上で RSS/Atom フィードを巡回し、新着エントリ
 
 ## セットアップ
 
+前提: Node.js 22 系を使用してください。`wrangler` の最新版は Node 22 を要求します。
+
 1. 依存関係をインストールします。
    ```bash
    npm install
