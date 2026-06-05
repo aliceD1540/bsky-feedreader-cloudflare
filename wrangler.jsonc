@@ -30,7 +30,7 @@
     },
   ],
   "vars": {
-    "FEED_CONFIG_URL": "https://example.com/feeds.json",
+    "FEED_CONFIG_URL": "https://project-grimoire.dev/bsky-feedreader/config.json",
     "MAX_POSTS_PER_RUN": "10",
   },
 }
