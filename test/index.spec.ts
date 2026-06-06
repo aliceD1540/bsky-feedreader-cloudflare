@@ -93,6 +93,20 @@ describe('scheduled worker', () => {
     loginMock.mockClear();
     postMock.mockClear();
     uploadBlobMock.mockClear();
+    postMock.mockImplementation(async (payload: Record<string, unknown>) => {
+      postedPayloads.push(payload);
+      return { uri: 'at://did:plc:test/app.bsky.feed.post/mock' };
+    });
+    uploadBlobMock.mockImplementation(async () => ({
+      data: {
+        blob: {
+          $type: 'blob',
+          ref: { $link: 'bafkreitest' },
+          mimeType: 'image/jpeg',
+          size: 4,
+        },
+      },
+    }));
 
     await env.DB.batch(schemaStatements.map((statement) => env.DB.prepare(statement)));
     await env.DB.exec('DELETE FROM posted_entries; DELETE FROM feeds;');
@@ -149,8 +163,16 @@ describe('scheduled worker', () => {
     });
     expect(loginMock).toHaveBeenCalledTimes(1);
     expect(postMock).toHaveBeenCalledTimes(1);
+    expect(uploadBlobMock).toHaveBeenCalledTimes(1);
     expect(postedPayloads[0]).toMatchObject({
       text: 'Example Feed: First entry',
+      embed: {
+        external: {
+          thumb: {
+            $type: 'blob',
+          },
+        },
+      },
     });
 
     const row = await env.DB.prepare(
@@ -198,6 +220,10 @@ describe('scheduled worker', () => {
           </feed>`);
       }
 
+      if (url === 'https://retry.example.com/posts/1') {
+        return htmlResponse(`<!doctype html><html><head><title>Retry entry</title></head><body></body></html>`);
+      }
+
       throw new Error(`Unexpected fetch: ${url}`);
     });
 
@@ -222,6 +248,114 @@ describe('scheduled worker', () => {
 
     expect(secondSummary.postedEntries).toBe(1);
     expect(postMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the article preview image when the feed has no thumbnail URL', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url === env.FEED_CONFIG_URL) {
+        return jsonResponse({
+          check_feeds: [{ title: 'OG Feed', url: 'https://og.example.com/feed.xml' }],
+        });
+      }
+
+      if (url === 'https://og.example.com/feed.xml') {
+        return textResponse(`<?xml version="1.0" encoding="utf-8"?>
+          <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+              <title>OG entry</title>
+              <link href="https://og.example.com/posts/1" />
+              <updated>2026-06-05T00:00:00Z</updated>
+            </entry>
+          </feed>`);
+      }
+
+      if (url === 'https://og.example.com/posts/1') {
+        return htmlResponse(`<!doctype html>
+          <html>
+            <head>
+              <meta property="og:image" content="/assets/preview.jpg" />
+            </head>
+            <body></body>
+          </html>`);
+      }
+
+      if (url === 'https://og.example.com/assets/preview.jpg') {
+        return new Response(new Uint8Array([1, 2, 3, 4]), {
+          headers: { 'content-type': 'image/jpeg' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { runFeedPollJob } = await import('../src/index');
+    const ctx = createExecutionContext();
+    const summary = await runFeedPollJob(workerEnv, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(summary.postedEntries).toBe(1);
+    expect(uploadBlobMock).toHaveBeenCalledTimes(1);
+    expect(postedPayloads[0]).toMatchObject({
+      text: 'OG Feed: OG entry',
+      embed: {
+        external: {
+          uri: 'https://og.example.com/posts/1',
+          thumb: {
+            $type: 'blob',
+          },
+        },
+      },
+    });
+  });
+
+  it('posts without a thumb when neither the feed nor the page exposes a preview image', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url === env.FEED_CONFIG_URL) {
+        return jsonResponse({
+          check_feeds: [{ title: 'No Image Feed', url: 'https://no-image.example.com/feed.xml' }],
+        });
+      }
+
+      if (url === 'https://no-image.example.com/feed.xml') {
+        return textResponse(`<?xml version="1.0" encoding="utf-8"?>
+          <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+              <title>No image entry</title>
+              <link href="https://no-image.example.com/posts/1" />
+              <updated>2026-06-05T00:00:00Z</updated>
+            </entry>
+          </feed>`);
+      }
+
+      if (url === 'https://no-image.example.com/posts/1') {
+        return htmlResponse(`<!doctype html><html><head><title>No image</title></head><body></body></html>`);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { runFeedPollJob } = await import('../src/index');
+    const ctx = createExecutionContext();
+    const summary = await runFeedPollJob(workerEnv, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(summary.postedEntries).toBe(1);
+    expect(uploadBlobMock).not.toHaveBeenCalled();
+    expect(postedPayloads[0]).toMatchObject({
+      text: 'No Image Feed: No image entry',
+      embed: {
+        external: {
+          uri: 'https://no-image.example.com/posts/1',
+        },
+      },
+    });
+    expect((postedPayloads[0].embed as { external: Record<string, unknown> }).external.thumb).toBeUndefined();
   });
 
   it('deletes posted entries older than 30 days during the cleanup cron', async () => {
@@ -279,5 +413,11 @@ function jsonResponse(body: unknown): Response {
 function textResponse(body: string): Response {
   return new Response(body, {
     headers: { 'content-type': 'application/xml' },
+  });
+}
+
+function htmlResponse(body: string): Response {
+  return new Response(body, {
+    headers: { 'content-type': 'text/html; charset=utf-8' },
   });
 }
