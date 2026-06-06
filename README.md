@@ -10,7 +10,8 @@ Cloudflare Workers 上で RSS/Atom フィードを巡回し、新着エントリ
 4. D1 で未投稿エントリーだけを claim
 5. Bluesky に投稿
 6. 投稿済みエントリーを D1 に記録
-7. 毎日 0:00 JST に 30 日より古い投稿履歴を削除
+7. 1回の実行で処理するフィード数と各フィードの対象件数を制限して CPU 負荷を平準化
+8. 毎日 0:00 JST に 30 日より古い投稿履歴を削除
 
 ## 必要な Cloudflare リソース
 
@@ -75,6 +76,12 @@ npm run test
 ```
 
 `npm run dev` 実行中は `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"` で scheduled handler を確認できます。
+
+## 負荷制御用の環境変数
+
+- `MAX_FEEDS_PER_RUN` (既定: `5`): 1回の cron 実行で処理する feed 数。feed は実行ごとにローテーションされます。
+- `MAX_ENTRIES_PER_FEED` (既定: `20`): 各 feed で投稿候補として見る最新エントリー数。
+- `MAX_POSTS_PER_RUN` (既定: `10`): 実際に Bluesky へ投稿する最大件数。
 
 ## Cron Trigger
 

@@ -155,6 +155,7 @@ describe('scheduled worker', () => {
     await waitOnExecutionContext(ctx);
 
     expect(summary).toEqual({
+      totalFeeds: 1,
       feedsChecked: 1,
       claimedEntries: 1,
       postedEntries: 1,
@@ -221,7 +222,9 @@ describe('scheduled worker', () => {
       }
 
       if (url === 'https://retry.example.com/posts/1') {
-        return htmlResponse(`<!doctype html><html><head><title>Retry entry</title></head><body></body></html>`);
+        return htmlResponse(
+          `<!doctype html><html><head><title>Retry entry</title></head><body></body></html>`,
+        );
       }
 
       throw new Error(`Unexpected fetch: ${url}`);
@@ -334,7 +337,9 @@ describe('scheduled worker', () => {
       }
 
       if (url === 'https://no-image.example.com/posts/1') {
-        return htmlResponse(`<!doctype html><html><head><title>No image</title></head><body></body></html>`);
+        return htmlResponse(
+          `<!doctype html><html><head><title>No image</title></head><body></body></html>`,
+        );
       }
 
       throw new Error(`Unexpected fetch: ${url}`);
@@ -355,7 +360,9 @@ describe('scheduled worker', () => {
         },
       },
     });
-    expect((postedPayloads[0].embed as { external: Record<string, unknown> }).external.thumb).toBeUndefined();
+    expect(
+      (postedPayloads[0].embed as { external: Record<string, unknown> }).external.thumb,
+    ).toBeUndefined();
   });
 
   it('deletes posted entries older than 30 days during the cleanup cron', async () => {

@@ -31,6 +31,8 @@
   ],
   "vars": {
     "FEED_CONFIG_URL": "https://project-grimoire.dev/bsky-feedreader/config.json",
+    "MAX_FEEDS_PER_RUN": "5",
+    "MAX_ENTRIES_PER_FEED": "20",
     "MAX_POSTS_PER_RUN": "10",
   },
 }

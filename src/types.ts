@@ -5,6 +5,8 @@ export interface Env {
   BSKY_USERNAME: string;
   BSKY_APP_PASSWORD: string;
   MAX_POSTS_PER_RUN?: string;
+  MAX_FEEDS_PER_RUN?: string;
+  MAX_ENTRIES_PER_FEED?: string;
 }
 
 export interface FeedConfig {

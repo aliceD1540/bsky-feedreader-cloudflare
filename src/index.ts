@@ -7,6 +7,7 @@ const FEED_POLL_CRON = '*/10 * * * *';
 const CLEANUP_CRON = '0 15 * * *';
 
 interface ScheduledSummary {
+  totalFeeds: number;
   feedsChecked: number;
   claimedEntries: number;
   postedEntries: number;
@@ -52,10 +53,16 @@ export async function runFeedPollJob(env: Env, ctx: ExecutionContext): Promise<S
   const feeds = await fetchFeedConfig(env.FEED_CONFIG_URL);
   await db.syncFeeds(env.DB, feeds);
 
-  const perFeedResults = await Promise.allSettled(feeds.map((feed) => fetchAndTrackFeed(env, feed)));
+  const feedsForRun = await selectFeedsForRun(env, feeds);
+  const maxEntriesPerFeed = getMaxEntriesPerFeed(env.MAX_ENTRIES_PER_FEED);
+
+  const perFeedResults = await Promise.allSettled(
+    feedsForRun.map((feed) => fetchAndTrackFeed(env, feed, maxEntriesPerFeed)),
+  );
 
   const summary: ScheduledSummary = {
-    feedsChecked: feeds.length,
+    totalFeeds: feeds.length,
+    feedsChecked: feedsForRun.length,
     claimedEntries: 0,
     postedEntries: 0,
     failedFeeds: 0,
@@ -118,11 +125,12 @@ export async function runCleanupJob(env: Env): Promise<CleanupSummary> {
 async function fetchAndTrackFeed(
   env: Env,
   feed: FeedConfig,
+  maxEntriesPerFeed: number,
 ): Promise<{ entries: FeedEntry[]; error: Error | null }> {
   try {
     const entries = await fetchFeedEntries(feed);
     await db.markFeedCheckSuccess(env.DB, feed);
-    return { entries, error: null };
+    return { entries: entries.slice(-maxEntriesPerFeed), error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await db.markFeedCheckFailure(env.DB, feed, message);
@@ -134,6 +142,39 @@ async function fetchAndTrackFeed(
 function getMaxPostsPerRun(value: string | undefined): number {
   const parsed = Number.parseInt(value ?? '10', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+}
+
+async function selectFeedsForRun(env: Env, feeds: FeedConfig[]): Promise<FeedConfig[]> {
+  const maxFeedsPerRun = getMaxFeedsPerRun(env.MAX_FEEDS_PER_RUN);
+  if (feeds.length <= maxFeedsPerRun) {
+    return feeds;
+  }
+
+  const cursorKey = 'feed-cursor';
+  const rawCursor = await env.SESSION_KV.get(cursorKey);
+  const parsedCursor = Number.parseInt(rawCursor ?? '0', 10);
+  const cursor =
+    Number.isFinite(parsedCursor) && parsedCursor >= 0 ? parsedCursor % feeds.length : 0;
+
+  const selected: FeedConfig[] = [];
+  for (let index = 0; index < maxFeedsPerRun; index += 1) {
+    selected.push(feeds[(cursor + index) % feeds.length]);
+  }
+
+  const nextCursor = (cursor + maxFeedsPerRun) % feeds.length;
+  await env.SESSION_KV.put(cursorKey, String(nextCursor));
+
+  return selected;
+}
+
+function getMaxFeedsPerRun(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '5', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+function getMaxEntriesPerFeed(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '20', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
 }
 
 export { CLEANUP_CRON, FEED_POLL_CRON };
