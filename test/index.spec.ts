@@ -365,6 +365,67 @@ describe('scheduled worker', () => {
     ).toBeUndefined();
   });
 
+  it('posts without a thumb when the thumbnail image exceeds Bluesky blob size limits', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url === env.FEED_CONFIG_URL) {
+        return jsonResponse({
+          check_feeds: [{ title: 'Big Image Feed', url: 'https://big-image.example.com/feed.xml' }],
+        });
+      }
+
+      if (url === 'https://big-image.example.com/feed.xml') {
+        return textResponse(`<?xml version="1.0" encoding="utf-8"?>
+          <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+              <title>Large image entry</title>
+              <link href="https://big-image.example.com/posts/1" />
+              <updated>2026-06-05T00:00:00Z</updated>
+              <link rel="enclosure" type="image/jpeg" href="https://big-image.example.com/huge.jpg" />
+            </entry>
+          </feed>`);
+      }
+
+      if (url === 'https://big-image.example.com/huge.jpg') {
+        return new Response(new Uint8Array(1_000_001), {
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': '1000001',
+          },
+        });
+      }
+
+      if (url === 'https://big-image.example.com/posts/1') {
+        return htmlResponse(
+          `<!doctype html><html><head><title>Large image entry</title></head><body></body></html>`,
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { runFeedPollJob } = await import('../src/index');
+    const ctx = createExecutionContext();
+    const summary = await runFeedPollJob(workerEnv, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(summary.postedEntries).toBe(1);
+    expect(uploadBlobMock).not.toHaveBeenCalled();
+    expect(postedPayloads[0]).toMatchObject({
+      text: 'Big Image Feed: Large image entry',
+      embed: {
+        external: {
+          uri: 'https://big-image.example.com/posts/1',
+        },
+      },
+    });
+    expect(
+      (postedPayloads[0].embed as { external: Record<string, unknown> }).external.thumb,
+    ).toBeUndefined();
+  });
+
   it('deletes posted entries older than 30 days during the cleanup cron', async () => {
     await env.DB.prepare(
       `INSERT INTO feeds (feed_url, title)

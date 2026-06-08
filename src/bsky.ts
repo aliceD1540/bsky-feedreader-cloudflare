@@ -3,6 +3,7 @@ import type { Env, FeedEntry } from './types';
 
 const BLUESKY_SERVICE_URL = 'https://bsky.social';
 const MAX_POST_GRAPHEMES = 300;
+const MAX_BSKY_BLOB_BYTES = 1_000_000;
 const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
 
 type SessionEnv = Pick<Env, 'SESSION_KV' | 'BSKY_USERNAME' | 'BSKY_APP_PASSWORD'>;
@@ -81,11 +82,31 @@ async function fetchThumbnailBlob(thumbnailUrl: string | null): Promise<Blob | n
   try {
     const response = await fetch(thumbnailUrl);
     if (!response.ok) {
-      console.warn(`Skipping thumbnail upload because fetch failed: ${response.status} ${response.statusText}`);
+      console.warn(
+        `Skipping thumbnail upload because fetch failed: ${response.status} ${response.statusText}`,
+      );
+      return null;
+    }
+
+    const contentLengthHeader = response.headers.get('content-length');
+    const contentLength = contentLengthHeader
+      ? Number.parseInt(contentLengthHeader, 10)
+      : Number.NaN;
+    if (Number.isFinite(contentLength) && contentLength > MAX_BSKY_BLOB_BYTES) {
+      console.warn(
+        `Skipping thumbnail upload because content-length exceeds Bluesky limit: ${contentLength} > ${MAX_BSKY_BLOB_BYTES}`,
+      );
       return null;
     }
 
     const blob = await response.blob();
+    if (blob.size > MAX_BSKY_BLOB_BYTES) {
+      console.warn(
+        `Skipping thumbnail upload because blob size exceeds Bluesky limit: ${blob.size} > ${MAX_BSKY_BLOB_BYTES}`,
+      );
+      return null;
+    }
+
     return blob.size > 0 ? blob : null;
   } catch (error) {
     console.warn(`Skipping thumbnail upload because fetch threw for ${thumbnailUrl}.`, error);
@@ -101,7 +122,9 @@ async function fetchPagePreviewImageUrl(entryUrl: string): Promise<string | null
       },
     });
     if (!response.ok) {
-      console.warn(`Skipping preview image lookup because page fetch failed: ${response.status} ${response.statusText}`);
+      console.warn(
+        `Skipping preview image lookup because page fetch failed: ${response.status} ${response.statusText}`,
+      );
       return null;
     }
 
@@ -149,7 +172,9 @@ function extractPreviewImageUrl(html: string, baseUrl: string): string | null {
 function parseHtmlAttributes(tag: string): Map<string, string> {
   const attributes = new Map<string, string>();
 
-  for (const match of tag.matchAll(/([^\s"'=<>\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g)) {
+  for (const match of tag.matchAll(
+    /([^\s"'=<>\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+  )) {
     const [, rawName, doubleQuotedValue, singleQuotedValue, unquotedValue] = match;
     const value = doubleQuotedValue ?? singleQuotedValue ?? unquotedValue;
     if (value) {
