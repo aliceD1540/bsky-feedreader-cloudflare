@@ -64,4 +64,42 @@ describe('parseFeedXml', () => {
       },
     ]);
   });
+
+  it('keeps only the latest N entries when maxEntries is specified', () => {
+    const xml = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <title>Example RSS</title>
+          <item>
+            <title>Old</title>
+            <link>https://example.com/posts/old</link>
+            <pubDate>Tue, 01 Jun 2026 00:00:00 GMT</pubDate>
+          </item>
+          <item>
+            <title>Middle</title>
+            <link>https://example.com/posts/middle</link>
+            <pubDate>Wed, 02 Jun 2026 00:00:00 GMT</pubDate>
+          </item>
+          <item>
+            <title>New</title>
+            <link>https://example.com/posts/new</link>
+            <pubDate>Thu, 03 Jun 2026 00:00:00 GMT</pubDate>
+          </item>
+        </channel>
+      </rss>`;
+
+    const entries = parseFeedXml(
+      xml,
+      {
+        title: 'RSS Feed',
+        url: 'https://example.com/feed.rdf',
+      },
+      2,
+    );
+
+    expect(entries.map((entry) => entry.entryUrl)).toEqual([
+      'https://example.com/posts/middle',
+      'https://example.com/posts/new',
+    ]);
+  });
 });

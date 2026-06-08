@@ -128,9 +128,9 @@ async function fetchAndTrackFeed(
   maxEntriesPerFeed: number,
 ): Promise<{ entries: FeedEntry[]; error: Error | null }> {
   try {
-    const entries = await fetchFeedEntries(feed);
+    const entries = await fetchFeedEntries(feed, maxEntriesPerFeed);
     await db.markFeedCheckSuccess(env.DB, feed);
-    return { entries: entries.slice(-maxEntriesPerFeed), error: null };
+    return { entries, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await db.markFeedCheckFailure(env.DB, feed, message);

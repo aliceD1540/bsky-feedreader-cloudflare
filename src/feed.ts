@@ -6,7 +6,9 @@ const ELEMENT_NODE = 1;
 export async function fetchFeedConfig(feedConfigUrl: string): Promise<FeedConfig[]> {
   const response = await fetch(feedConfigUrl);
   if (!response.ok) {
-    throw new Error(`Failed to fetch feed configuration: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to fetch feed configuration: ${response.status} ${response.statusText}`,
+    );
   }
 
   const payload = (await response.json()) as FeedConfigDocument;
@@ -33,17 +35,20 @@ export async function fetchFeedConfig(feedConfigUrl: string): Promise<FeedConfig
   return Array.from(deduped.values());
 }
 
-export async function fetchFeedEntries(feed: FeedConfig): Promise<FeedEntry[]> {
+export async function fetchFeedEntries(
+  feed: FeedConfig,
+  maxEntries?: number,
+): Promise<FeedEntry[]> {
   const response = await fetch(feed.url);
   if (!response.ok) {
     throw new Error(`Failed to fetch feed ${feed.url}: ${response.status} ${response.statusText}`);
   }
 
   const xml = await response.text();
-  return parseFeedXml(xml, feed);
+  return parseFeedXml(xml, feed, maxEntries);
 }
 
-export function parseFeedXml(xml: string, feed: FeedConfig): FeedEntry[] {
+export function parseFeedXml(xml: string, feed: FeedConfig, maxEntries?: number): FeedEntry[] {
   const document = new DOMParser().parseFromString(xml, 'text/xml');
   const parserErrors = document.getElementsByTagName('parsererror');
   if (parserErrors.length > 0) {
@@ -54,36 +59,46 @@ export function parseFeedXml(xml: string, feed: FeedConfig): FeedEntry[] {
   const rootName = getLocalName(root);
 
   if (rootName === 'feed') {
-    return dedupeEntries(parseAtomEntries(root, feed));
+    return parseAtomEntries(root, feed, maxEntries);
   }
 
   if (rootName === 'rss' || rootName === 'rdf') {
-    return dedupeEntries(parseRssEntries(root, feed));
+    return parseRssEntries(root, feed, maxEntries);
   }
 
   if (findDescendants(root, 'entry').length > 0) {
-    return dedupeEntries(parseAtomEntries(root, feed));
+    return parseAtomEntries(root, feed, maxEntries);
   }
 
   if (findDescendants(root, 'item').length > 0) {
-    return dedupeEntries(parseRssEntries(root, feed));
+    return parseRssEntries(root, feed, maxEntries);
   }
 
   throw new Error(`Unsupported feed format for ${feed.url}`);
 }
 
-function parseRssEntries(root: Element, feed: FeedConfig): FeedEntry[] {
-  return findDescendants(root, 'item')
-    .map((item) => buildRssEntry(item, feed))
-    .filter((entry): entry is FeedEntry => entry !== null)
-    .sort(compareEntriesByPublishedAt);
+function parseRssEntries(root: Element, feed: FeedConfig, maxEntries?: number): FeedEntry[] {
+  const entries: FeedEntry[] = [];
+  for (const item of findDescendants(root, 'item')) {
+    const entry = buildRssEntry(item, feed);
+    if (entry) {
+      entries.push(entry);
+    }
+  }
+
+  return selectEntriesForPosting(entries, maxEntries);
 }
 
-function parseAtomEntries(root: Element, feed: FeedConfig): FeedEntry[] {
-  return findDescendants(root, 'entry')
-    .map((entry) => buildAtomEntry(entry, feed))
-    .filter((entry): entry is FeedEntry => entry !== null)
-    .sort(compareEntriesByPublishedAt);
+function parseAtomEntries(root: Element, feed: FeedConfig, maxEntries?: number): FeedEntry[] {
+  const entries: FeedEntry[] = [];
+  for (const entryElement of findDescendants(root, 'entry')) {
+    const entry = buildAtomEntry(entryElement, feed);
+    if (entry) {
+      entries.push(entry);
+    }
+  }
+
+  return selectEntriesForPosting(entries, maxEntries);
 }
 
 function buildRssEntry(item: Element, feed: FeedConfig): FeedEntry | null {
@@ -142,7 +157,11 @@ function extractRssThumbnail(item: Element, baseUrl: string): string | null {
       return url;
     }
 
-    if ((name === 'content' || name === 'enclosure') && url && (!type || type.startsWith('image/'))) {
+    if (
+      (name === 'content' || name === 'enclosure') &&
+      url &&
+      (!type || type.startsWith('image/'))
+    ) {
       return url;
     }
   }
@@ -184,6 +203,46 @@ function dedupeEntries(entries: FeedEntry[]): FeedEntry[] {
     seen.add(entry.entryUrl);
     return true;
   });
+}
+
+function selectEntriesForPosting(entries: FeedEntry[], maxEntries?: number): FeedEntry[] {
+  const deduped = dedupeEntries(entries);
+  const limit = typeof maxEntries === 'number' && maxEntries > 0 ? maxEntries : undefined;
+
+  if (!limit || deduped.length <= limit) {
+    return deduped.sort(compareEntriesByPublishedAt);
+  }
+
+  const selected: FeedEntry[] = [];
+
+  for (const entry of deduped) {
+    if (selected.length < limit) {
+      selected.push(entry);
+      continue;
+    }
+
+    const candidateTime = getEntrySortTime(entry);
+    let oldestIndex = 0;
+    let oldestTime = getEntrySortTime(selected[0]);
+
+    for (let index = 1; index < selected.length; index += 1) {
+      const currentTime = getEntrySortTime(selected[index]);
+      if (currentTime < oldestTime) {
+        oldestTime = currentTime;
+        oldestIndex = index;
+      }
+    }
+
+    if (candidateTime > oldestTime) {
+      selected[oldestIndex] = entry;
+    }
+  }
+
+  return selected.sort(compareEntriesByPublishedAt);
+}
+
+function getEntrySortTime(entry: FeedEntry): number {
+  return entry.publishedAt ? Date.parse(entry.publishedAt) : Number.MAX_SAFE_INTEGER;
 }
 
 function compareEntriesByPublishedAt(left: FeedEntry, right: FeedEntry): number {
