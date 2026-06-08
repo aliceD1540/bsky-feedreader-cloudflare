@@ -79,11 +79,11 @@ npm run test
 
 ## 負荷制御用の環境変数
 
-- `MAX_FEEDS_PER_RUN` (既定: `5`): 1回の cron 実行で処理する feed 数。feed は実行ごとにローテーションされます。
-- `MAX_ENTRIES_PER_FEED` (既定: `20`): 各 feed で投稿候補として見る最新エントリー数。
+- `MAX_FEEDS_PER_RUN` (既定: `3`): 1回の cron 実行で処理する feed 数。feed は実行ごとにローテーションされます。
+- `MAX_ENTRIES_PER_FEED` (既定: `10`): 各 feed で投稿候補として見る最新エントリー数。
 - `MAX_POSTS_PER_RUN` (既定: `10`): 実際に Bluesky へ投稿する最大件数。
 
 ## Cron Trigger
 
-- `*/10 * * * *`: フィード巡回
+- `*/5 * * * *`: フィード巡回
 - `0 15 * * *`: 投稿履歴の削除（UTC 基準。JST では毎日 0:00）

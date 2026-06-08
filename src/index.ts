@@ -3,7 +3,7 @@ import * as db from './db';
 import { fetchFeedConfig, fetchFeedEntries } from './feed';
 import type { Env, FeedConfig, FeedEntry } from './types';
 
-const FEED_POLL_CRON = '*/10 * * * *';
+const FEED_POLL_CRON = '*/5 * * * *';
 const CLEANUP_CRON = '0 15 * * *';
 
 interface ScheduledSummary {
