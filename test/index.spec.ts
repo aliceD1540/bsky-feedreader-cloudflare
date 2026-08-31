@@ -111,6 +111,9 @@ describe('scheduled worker', () => {
     await env.DB.batch(schemaStatements.map((statement) => env.DB.prepare(statement)));
     await env.DB.exec('DELETE FROM posted_entries; DELETE FROM feeds;');
 
+    // Clear feed config cache from SESSION_KV
+    await env.SESSION_KV.delete('feed-config-cache');
+
     vi.restoreAllMocks();
   });
 

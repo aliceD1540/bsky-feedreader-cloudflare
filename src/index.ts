@@ -50,7 +50,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 export async function runFeedPollJob(env: Env, ctx: ExecutionContext): Promise<ScheduledSummary> {
-  const feeds = await fetchFeedConfig(env.FEED_CONFIG_URL);
+  const feeds = await fetchFeedConfig(env.FEED_CONFIG_URL, env.SESSION_KV);
   await db.syncFeeds(env.DB, feeds);
 
   const feedsForRun = await selectFeedsForRun(env, feeds);
