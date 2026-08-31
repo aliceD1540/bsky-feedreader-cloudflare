@@ -2,8 +2,21 @@ import { DOMParser } from '@xmldom/xmldom';
 import type { FeedConfig, FeedConfigDocument, FeedEntry } from './types';
 
 const ELEMENT_NODE = 1;
+const FEED_CONFIG_CACHE_KEY = 'feed-config-cache';
+const FEED_CONFIG_CACHE_TTL_SECONDS = 3600; // 1 hour
 
-export async function fetchFeedConfig(feedConfigUrl: string): Promise<FeedConfig[]> {
+export async function fetchFeedConfig(
+  feedConfigUrl: string,
+  sessionKv?: KVNamespace,
+): Promise<FeedConfig[]> {
+  // Try to get from cache first
+  if (sessionKv) {
+    const cachedConfig = await sessionKv.get(FEED_CONFIG_CACHE_KEY, 'json');
+    if (cachedConfig) {
+      return cachedConfig as FeedConfig[];
+    }
+  }
+
   const response = await fetch(feedConfigUrl);
   if (!response.ok) {
     throw new Error(
@@ -32,7 +45,16 @@ export async function fetchFeedConfig(feedConfigUrl: string): Promise<FeedConfig
     deduped.set(url, { title, url });
   }
 
-  return Array.from(deduped.values());
+  const feeds = Array.from(deduped.values());
+
+  // Cache the result
+  if (sessionKv) {
+    await sessionKv.put(FEED_CONFIG_CACHE_KEY, JSON.stringify(feeds), {
+      expirationTtl: FEED_CONFIG_CACHE_TTL_SECONDS,
+    });
+  }
+
+  return feeds;
 }
 
 export async function fetchFeedEntries(

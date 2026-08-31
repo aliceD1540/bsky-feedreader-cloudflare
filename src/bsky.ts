@@ -4,6 +4,7 @@ import type { Env, FeedEntry } from './types';
 const BLUESKY_SERVICE_URL = 'https://bsky.social';
 const MAX_POST_GRAPHEMES = 300;
 const MAX_BSKY_BLOB_BYTES = 1_000_000;
+const PREVIEW_IMAGE_FETCH_TIMEOUT_MS = 3000;
 const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
 
 type SessionEnv = Pick<Env, 'SESSION_KV' | 'BSKY_USERNAME' | 'BSKY_APP_PASSWORD'>;
@@ -116,11 +117,18 @@ async function fetchThumbnailBlob(thumbnailUrl: string | null): Promise<Blob | n
 
 async function fetchPagePreviewImageUrl(entryUrl: string): Promise<string | null> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), PREVIEW_IMAGE_FETCH_TIMEOUT_MS);
+
     const response = await fetch(entryUrl, {
       headers: {
         accept: 'text/html,application/xhtml+xml',
       },
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
       console.warn(
         `Skipping preview image lookup because page fetch failed: ${response.status} ${response.statusText}`,
@@ -131,7 +139,14 @@ async function fetchPagePreviewImageUrl(entryUrl: string): Promise<string | null
     const html = await response.text();
     return extractPreviewImageUrl(html, entryUrl);
   } catch (error) {
-    console.warn(`Skipping preview image lookup because page fetch threw for ${entryUrl}.`, error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.warn(`Skipping preview image lookup because fetch timed out for ${entryUrl}.`);
+    } else {
+      console.warn(
+        `Skipping preview image lookup because page fetch threw for ${entryUrl}.`,
+        error,
+      );
+    }
     return null;
   }
 }
